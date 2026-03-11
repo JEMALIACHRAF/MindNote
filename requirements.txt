@@ -1,0 +1,60 @@
+
+# UI
+gradio==3.47.0
+gradio_client==0.6.0
+
+# Core utils / HTTP
+requests==2.32.5
+python-dotenv==1.2.1
+
+# LlamaIndex + modules utilisés
+llama-index==0.14.8
+llama-index-core==0.14.8
+llama-index-llms-openai==0.6.9
+llama-index-llms-together==0.4.1
+llama-index-embeddings-huggingface==0.6.1
+llama-index-readers-file==0.5.4
+llama-index-vector-stores-chroma==0.5.5
+
+# Vector DB
+chromadb==1.4.1
+
+# ML / embeddings / clustering
+numpy==1.26.4
+scikit-learn==1.7.2
+sentence-transformers==5.1.2
+torch==2.9.1
+transformers==4.57.6
+huggingface-hub==0.36.0
+tokenizers==0.22.1
+safetensors==0.6.2
+
+# Audio / YouTube
+yt-dlp==2026.2.4
+
+# OpenAI (LLM + transcription)
+openai==2.20.0
+tiktoken==0.12.0
+
+# Web server (si tu ajoutes WhatsApp webhook / API)
+fastapi==0.128.0
+uvicorn==0.40.0
+starlette==0.49.3
+python-multipart==0.0.20
+
+# Parsing / PDF (SimpleDirectoryReader peut s'appuyer dessus selon formats)
+pypdf==6.2.0
+pdfminer.six==20251107
+pdfplumber==0.11.8
+PyMuPDF==1.26.7
+docx2txt==0.9
+striprtf==0.0.26
+
+# Images (si tu manipules images; SimpleDirectoryReader/preview)
+pillow==10.4.0
+python-dotenv
+boto3
+polars 
+pyarrow 
+s3fs 
+fsspec
