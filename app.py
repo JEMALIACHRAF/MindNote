@@ -226,7 +226,7 @@ class AppState:
 
 # Instance globale de l'état
 app_state = AppState()
-
+metadata_service = None
 
 # --- AWS runtime config (SAFE) ---
 import os
@@ -651,9 +651,8 @@ def build_query_engine(modality: str, selected_note: str):
 
     nodes = app_state.file_nodes.get(selected_note)
 
-    # ✅ NEW: lazy-load depuis Silver si absent
     if not nodes:
-        nodes = load_nodes_for_doc_from_silver(selected_note)
+        nodes = load_nodes_from_silver(doc_id=selected_note)
 
     if nodes:
         try:
@@ -1151,12 +1150,25 @@ def add_audio(history: list, audio: str) -> tuple:
 
 def add_file_db(file) -> gr.Dropdown:
     print(f"Processing file: {file.name}")
-    doc_name = process_file(file.name)
 
-    if doc_name not in app_state.options:
-        app_state.options.append(doc_name)
+    result = process_file_pipeline(
+        filename=file.name,
+        pipeline=app_state.pipeline,
+        vector_index=app_state.vector_index,
+        embed_model=Settings.embed_model,
+        embed_model_name=Config.EMBEDDING_MODEL,
+        metadata_service=metadata_service,
+        silver_store=silver_store,
+    )
 
-    return gr.Dropdown.update(choices=app_state.options, value=doc_name)
+    app_state.file_nodes[result.doc_id] = result.nodes
+    app_state.documents[result.doc_id] = [result.doc_id, result.combined_doc]
+
+    if result.doc_id not in app_state.options:
+        app_state.options.append(result.doc_id)
+
+    refresh_chat_engine()
+    return gr.Dropdown.update(choices=app_state.options, value=result.doc_id)
 
 
 
@@ -1192,103 +1204,28 @@ def add_note(text: str) -> tuple:
     return "", gr.Dropdown.update(choices=app_state.options)
 
 def add_audio_file_db(audio_file) -> gr.Dropdown:
-    """
-    Upload audio -> conserve local -> upload raw S3 -> transcrit -> Silver -> indexe.
-    """
     audio_path = audio_file.name if hasattr(audio_file, "name") else str(audio_file)
-    stable_path = save_uploaded_audio_to_stable_path(audio_path)
 
-    doc_id = os.path.basename(stable_path)
-    source_type = "audio"
+    result = add_audio_pipeline(
+        audio_path=audio_path,
+        save_uploaded_audio_to_stable_path=save_uploaded_audio_to_stable_path,
+        transcribe_audio_openai=transcribe_audio_openai,
+        pipeline=app_state.pipeline,
+        vector_index=app_state.vector_index,
+        embed_model=Settings.embed_model,
+        embed_model_name=Config.EMBEDDING_MODEL,
+        metadata_service=metadata_service,
+        silver_store=silver_store,
+    )
 
-    # -------- 1) Upload RAW audio vers S3 ----------
-    raw_s3_uri = None
-    try:
-        raw_s3_uri = upload_raw_to_s3(stable_path, "audio")
-    except Exception as e:
-        print(f"⚠️ Upload S3 audio failed: {e}")
+    app_state.file_nodes[result.doc_id] = result.nodes
+    app_state.documents[result.doc_id] = [result.doc_id, result.combined_doc]
 
-    # -------- 2) Transcription ----------
-    transcript = transcribe_audio_openai(stable_path)
-    if not transcript.strip():
-        transcript = "(Transcription vide ou échouée)"
-
-    # -------- 3) Document texte ----------
-    doc = Document(text=transcript)
-    doc.metadata = doc.metadata or {}
-    doc.metadata["file_name"] = doc_id
-    doc.metadata["source_type"] = source_type
-    doc.metadata["audio_path"] = stable_path
-    if raw_s3_uri:
-        doc.metadata["raw_s3_uri"] = raw_s3_uri
-
-    # -------- 4) Métadonnées ----------
-    try:
-        title, keywords, summary = asyncio.run(extract_metadata(doc))
-        doc.metadata["title"] = title
-        doc.metadata["keywords"] = keywords_to_scalar(keywords)
-        doc.metadata["summary"] = summary
-    except Exception as e:
-        print(f"⚠️ Metadata extraction failed (audio): {e}")
-        doc.metadata.setdefault("title", "Audio Transcript")
-        doc.metadata.setdefault("keywords", "")
-        doc.metadata.setdefault("summary", "")
-
-    # -------- 5) Nodes via pipeline ----------
-    nodes = app_state.pipeline.run(documents=[doc])
-
-    # Normalise nodes metadata (Chroma)
-    for n in nodes:
-        md = getattr(n, "metadata", None) or {}
-        md = dict(md)
-        md["file_name"] = doc_id
-        md["source_type"] = source_type
-        md["audio_path"] = stable_path
-        if raw_s3_uri:
-            md["raw_s3_uri"] = raw_s3_uri
-        if "keywords" in md:
-            md["keywords"] = keywords_to_scalar(md.get("keywords"))
-        n.metadata = md
-
-    # -------- 6) Silver write (documents + chunks + embeddings) ----------
-    combined_text = transcript
-    content_hash = _sha256_file(stable_path)
-
-    try:
-        write_silver_documents_row(
-            doc_id=doc_id,
-            source_type=source_type,
-            raw_path=raw_s3_uri or "",
-            text=combined_text,
-            title=doc.metadata.get("title", "Audio Transcript"),
-            keywords=doc.metadata.get("keywords", ""),
-            summary=doc.metadata.get("summary", ""),
-            content_hash=content_hash,
-        )
-        write_silver_chunks_and_embeddings(
-            doc_id=doc_id,
-            nodes=nodes,
-            embed_model_name=Config.EMBEDDING_MODEL,
-        )
-        print(" Silver écrit (audio documents/chunks/embeddings)")
-    except Exception as e:
-        print(f" Silver write failed (audio): {e}")
-
-    # -------- 7) Indexation Chroma ----------
-    app_state.vector_index.insert_nodes(nodes)
-
-    # Selected note support
-    app_state.file_nodes[doc_id] = nodes
-
-    # Preview/Topics
-    app_state.documents[doc_id] = [doc_id, doc]
-
-    if doc_id not in app_state.options:
-        app_state.options.append(doc_id)
+    if result.doc_id not in app_state.options:
+        app_state.options.append(result.doc_id)
 
     refresh_chat_engine()
-    return gr.Dropdown.update(choices=app_state.options, value=doc_id)
-
+    return gr.Dropdown.update(choices=app_state.options, value=result.doc_id)
 
 
 def bot(history: list, modality: str, selected_note: str):
@@ -1534,42 +1471,39 @@ def create_gradio_interface():
 
 def main():
     """Point d'entrée principal de l'application"""
+    global metadata_service
+
     print("\n" + ""*30)
     print("="*60)
     print("        SECOND BRAIN - Application de Notes Intelligente")
     print("="*60)
     print(""*30 + "\n")
-    
+
     print(" Démarrage de l'application...\n")
-    
-    # Configuration
+
     print("  Configuration des répertoires...")
     Config.ensure_directories()
     print("    Répertoires vérifiés/créés\n")
-    
-    # Initialisation du LLM (à configurer selon vos besoins)
+
     print(" Initialisation du modèle LLM...")
     print("   Modèle: gpt-3.5-turbo")
     try:
         llm = llama_openai(model="gpt-3.5-turbo", api_key=os.environ.get("openai_key"))
-
         print("    LLM initialisé\n")
     except Exception as e:
         print(f"    Erreur lors de l'initialisation du LLM: {e}")
         print("     Vérifiez votre clé API dans le fichier .env\n")
         return
-    
-    # Initialisation de l'état de l'application (sans document initial)
-    # Si vous avez un fichier PDF à charger au démarrage, passez son chemin ici :
-    # app_state.initialize_models(llm, docs_path="chemin/vers/votre/fichier.pdf")
+
     app_state.initialize_models(llm, docs_path=None)
+    metadata_service = MetadataService(app_state.llm)
+
     bootstrap_from_silver_documents(load_full_text=True)
 
-    # Création et lancement de l'interface
     print("\n Création de l'interface Gradio...")
     demo = create_gradio_interface()
     print("    Interface créée\n")
-    
+
     print(" Lancement de l'application...")
     print("=" * 60)
     print(" L'application sera accessible sur:")
@@ -1577,13 +1511,13 @@ def main():
     print("   - Réseau:  http://0.0.0.0:7860")
     print("=" * 60)
     print("\n Pour arrêter l'application, appuyez sur Ctrl+C\n")
-    
+
     demo.queue()
     demo.launch(
-         server_name="0.0.0.0",
-         server_port=7860,
-         share=False,
-         debug=False
+        server_name="0.0.0.0",
+        server_port=7860,
+        share=False,
+        debug=False
     )
 
 
