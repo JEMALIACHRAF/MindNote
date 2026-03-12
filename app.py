@@ -58,6 +58,11 @@ from llama_index.embeddings.huggingface import HuggingFaceEmbedding
 from llama_index.vector_stores.chroma import ChromaVectorStore
 
 
+from pipelines import silver_store
+from pipelines.ingestion import process_file as process_file_pipeline
+from pipelines.audio_pipeline import add_audio_file_db as add_audio_pipeline
+from pipelines.indexing import load_nodes_from_silver, rebuild_index
+from pipelines.metadata_service import MetadataService
 
 from dotenv import load_dotenv
 load_dotenv()  # charge .env depuis le répertoire courant
