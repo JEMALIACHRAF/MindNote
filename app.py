@@ -247,19 +247,13 @@ import polars as pl
 from llama_index.core import Document
 
 def bootstrap_from_silver_documents(max_docs: int | None = None, load_full_text: bool = True):
-    """
-    Lit silver/documents depuis S3 (Parquet), reconstruit:
-      - app_state.documents (pour Preview/Topics)
-      - app_state.options (pour dropdown Search)
-    Ne touche PAS à l'index Chroma (qui est déjà persistant local).
-    """
     print("\n" + "="*60)
     print("🔄 BOOTSTRAP: chargement depuis Silver/documents (S3)")
     print("="*60)
 
-    docs_glob = f"{SILVER_DOCUMENTS}/**/*.parquet"
+    docs_glob = f"{silver_store.SILVER_DOCUMENTS}/**/*.parquet"
     try:
-        df = pl.read_parquet(docs_glob, storage_options=_storage_options())
+        df = pl.read_parquet(docs_glob, storage_options=silver_store.storage_options())
     except Exception as e:
         print(f"⚠️ Impossible de lire {docs_glob}: {e}")
         return
@@ -268,8 +262,6 @@ def bootstrap_from_silver_documents(max_docs: int | None = None, load_full_text:
         print("ℹ️ Aucune donnée dans silver/documents.")
         return
 
-    # Optionnel : garder uniquement le dernier enregistrement par doc_id
-    # (si tu append plusieurs fois le même doc_id)
     if "created_at" in df.columns:
         df = df.sort("created_at").group_by("doc_id").tail(1)
 
@@ -282,10 +274,8 @@ def bootstrap_from_silver_documents(max_docs: int | None = None, load_full_text:
         if not doc_id:
             continue
 
-        # Reconstruit Document texte (pour Preview/Topics)
         text = row.get("text") or ""
         if not load_full_text:
-            # tu peux limiter si tu veux éviter trop de RAM
             text = text[:20_000]
 
         doc = Document(text=text)
@@ -300,7 +290,6 @@ def bootstrap_from_silver_documents(max_docs: int | None = None, load_full_text:
             "content_hash": row.get("content_hash") or "",
         }
 
-        # Stocke dans app_state comme avant
         app_state.documents[doc_id] = [doc_id, doc]
 
         if doc_id not in app_state.options:
@@ -308,7 +297,7 @@ def bootstrap_from_silver_documents(max_docs: int | None = None, load_full_text:
 
         loaded += 1
 
-    print(f" Bootstrap terminé: {loaded} documents rechargés dans app_state.documents")
+    print(f"Bootstrap terminé: {loaded} documents rechargés dans app_state.documents")
     print("="*60 + "\n")
 
 import json
