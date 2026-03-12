@@ -444,7 +444,7 @@ Inconvénients :
 ### En local / démo
 Utiliser :
 - `python app.py`
-- Airflow optionnel
+- Airflow 
 
 ### En mode structuré / portfolio / prod
 Utiliser :
@@ -474,7 +474,7 @@ sequenceDiagram
     participant M as metadata_service.py
     participant S as silver_store.py
     participant C as ChromaDB
-    participant A as Airflow (optionnel)
+    participant A as Airflow 
 
     U->>G: Upload document
     alt Mode synchrone
