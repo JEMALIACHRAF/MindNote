@@ -333,6 +333,30 @@ But métier : reconstruire l’index à partir de la couche Silver, sans repasse
 
 ### 8.1 `ingest_second_brain_document`
 Rôle : exécuter le pipeline document de bout en bout.
+```mermaid
+flowchart TD
+    A[validate_input] --> B[ingest_document]
+    B --> C[log_result]
+
+    A1["Valide si :
+    - conf reçue
+    - file_path présent
+    - fichier existe"]:::note
+    B1["Valide si :
+    - traitement sans exception
+    - doc_id non vide
+    - combined_text_length > 0
+    - nodes_count > 0"]:::note
+    C1["Succès visible dans les logs :
+    DOCUMENT INGESTED"]:::success
+
+    A --- A1
+    B --- B1
+    C --- C1
+
+    classDef note fill:#f7f7f7,stroke:#999,color:#222;
+    classDef success fill:#e8f5e9,stroke:#2e7d32,color:#1b5e20;
+```
 
 ### Entrée :
 ```json
@@ -356,7 +380,31 @@ Rôle : exécuter le pipeline document de bout en bout.
 
 ### 8.2 `ingest_second_brain_audio`
 Rôle : exécuter le pipeline audio de bout en bout.
+```mermaid
+flowchart TD
+    A[validate_input] --> B[ingest_audio]
+    B --> C[log_result]
 
+    A1["Valide si :
+    - conf reçue
+    - audio_path présent
+    - fichier audio existe"]:::note
+    B1["Valide si :
+    - transcription OK
+    - doc_id non vide
+    - transcript_length > 0
+    - nodes_count > 0
+    - stable_path non vide"]:::note
+    C1["Succès visible dans les logs :
+    AUDIO INGESTED"]:::success
+
+    A --- A1
+    B --- B1
+    C --- C1
+
+    classDef note fill:#f7f7f7,stroke:#999,color:#222;
+    classDef success fill:#e8f5e9,stroke:#2e7d32,color:#1b5e20;
+```
 ### Entrée :
 ```json
 {
@@ -379,7 +427,33 @@ Rôle : exécuter le pipeline audio de bout en bout.
 
 ### 8.3 `rebuild_second_brain_index`
 Rôle : reconstruire tout ou partie de l’index depuis Silver.
+```mermaid
+flowchart TD
+    A[read_conf] --> B[load_nodes]
+    B --> C[rebuild]
+    C --> D[log_result]
 
+    A1["Valide si :
+    - conf lue
+    - doc_id / limit optionnels"]:::note
+    B1["Valide si :
+    - lecture Silver OK
+    - nodes_count > 0 idéalement"]:::note
+    C1["Valide si :
+    - reconstruction sans exception
+    - status = rebuilt
+    - index_class non vide"]:::note
+    D1["Succès visible dans les logs :
+    INDEX REBUILT"]:::success
+
+    A --- A1
+    B --- B1
+    C --- C1
+    D --- D1
+
+    classDef note fill:#f7f7f7,stroke:#999,color:#222;
+    classDef success fill:#e8f5e9,stroke:#2e7d32,color:#1b5e20;
+```
 ### Entrée optionnelle :
 ```json
 {
